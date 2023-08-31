@@ -1,19 +1,11 @@
-# IMPORTING AND PREPARING EBIRD DATA FOR ANALYSIS OF THE SPREAD OF ESTABLISHMENT
-# OF AN INVASIVE SPECIES
+# IMPORTING AND PREPARING EBIRD DATA FOR CALCULATION OF NATIVE SPECIES
+# ENCOUNTER RATE BETWEEN 2002 and 2004 IN FLORIDA
 # Author = John Gray
 # Email = greyjohn15@gmail.com
-# Last Edit = 10/05/2023
+# Last Edit = 31/08/2023
 
-# This is a neater version of 'Myna_NZ_spread_analysis' - if there are any errors
-# refer to original script
+### Loading necessary packages ----
 
-### Installing and loading necessary packages ----
-
-# install necessary packages
-install.packages("remotes")
-remotes::install_github("mstrimas/ebppackages")
-
-# load packages
 library(auk)
 library(sf)
 library(rnaturalearth)
@@ -43,7 +35,7 @@ ebd <- auk_ebd("ebd_US-FL_relApr-2023.txt",  # change to desired file
 # define features observations
 ebd_filters <- ebd %>%
   auk_state("US-FL") %>%
-  auk_date(date = c("2000-01-01", "2004-12-31")) %>%
+  auk_date(date = c("2002-01-01", "2004-12-31")) %>%
   auk_protocol(protocol = c("Stationary", "Traveling")) %>% # Standard eBird protocol for data analysis
   auk_complete()
 
@@ -56,8 +48,8 @@ data_dir <- "data"
 if (!dir.exists(data_dir)) {
   dir.create(data_dir)
 }
-f_ebd <- file.path(data_dir, "ebd_all_species_FL_2000-2004.txt")
-f_sampling <- file.path(data_dir, "ebd_checklists_all_species_FL_2000-2004.txt")
+f_ebd <- file.path(data_dir, "ebd_all_species_FL_2002-2004.txt")
+f_sampling <- file.path(data_dir, "ebd_checklists_all_species_FL_2002-2004.txt")
 
 # only run if the files don't already exist
 if (!file.exists(f_ebd)) {
@@ -126,10 +118,6 @@ cell_stats <- ebird_FL_all_species %>%
 
 ### Producing output csv files ----
 
-write_csv(ebird_FL_all_species, "data/ebd_FL_all_species_2000-2004_zf.csv", na = "")
+write_csv(ebird_FL_all_species, "data/ebd_FL_all_species_2002-2004_zf.csv", na = "")
 
-write_csv(cell_stats, "data/ebd_FL_all_species_2000-2004_cell_stats.csv", na = "")
-
-checker <- ebird_FL_all_species[,-c(1,2,3)]
-
-duplicate_rows_2 <- checker[duplicated(checker),]
+write_csv(cell_stats, "data/ebd_FL_all_species_2002-2004_cell_stats.csv", na = "")

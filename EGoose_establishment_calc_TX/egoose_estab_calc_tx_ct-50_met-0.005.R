@@ -1,18 +1,11 @@
-# PRODUCING RESULTS ON THE SPREAD OF ESTABLISHMENT OF INVASIVE SPECIES FROM
-# CLEANED EBIRD DATA
+# CALCULATING ESTABLISHMENT SCORE VALUES FOR THE EGYPTIAN GOOSE ACROSS TEXAS
+# USING CHECKLIST THRESHOLD = 50 AND MINIMUM ENCOUNTER RATE THRESHOLD = 0.005
 # Author = John Gray
 # Email = greyjohn15@gmail.com
 # Last edit = 24/05/2023
 
 
-# Installing and loading necessary packages ----
-install.packages("gganimate")
-install.packages("transformr")
-install.packages("rgbif")
-install.packages("gganimate")
-install.packages("transformr")
-install.packages("tidyterra")
-
+# Loading necessary packages ----
 library(rgbif)
 library(tidyr)
 library(ggplot2)
@@ -47,7 +40,7 @@ dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE,
 
 establishment_year_calc <- function(x, checklist_threshold, min_encounter_threshold) {
   
-  ## subset myna dataset to target hexagon
+  ## subset egoose dataset to target hexagon
   subject_cell <- subset(ebird_TX_egoose, ebird_TX_egoose$cell == x)
   
   ## get yearly detection stats for hexagon
@@ -229,11 +222,11 @@ year <- c(2000:2019)
 
 TX_establishments <- cbind(year, TX_establishments)
 
-# Create additional similar dataframe that finds number of checklists for each
+# Create additional similar function that finds number of checklists for each
 # year
 
 checklist_finder <- function(x, checklist_threshold){
-  ## subset myna dataset to target hexagon
+  ## subset egoose dataset to target hexagon
   subject_cell <- subset(ebird_TX_egoose, ebird_TX_egoose$cell == x)
   
   ## get yearly detection stats for hexagon
@@ -270,17 +263,18 @@ checklist_finder <- function(x, checklist_threshold){
   return(yearly_min_checklists)
 }
 
+# Apply checklist function to eBird data for Egyptian Goose
 TX_min_checklist_numbers <- sapply(TX_cells, checklist_finder, checklist_threshold = 50)
 
 colnames(TX_min_checklist_numbers) <- TX_cells
 
 TX_min_checklist_numbers <- cbind(year, TX_min_checklist_numbers)
 
-# create additional similar dataframe that finds encounter rate for each year
+# create additional similar function that finds encounter rate for each year
 
 encounter_rate_calc <- function(x, checklist_threshold) {
   
-  ## subset myna dataset to target hexagon
+  ## subset egoose dataset to target hexagon
   subject_cell <- subset(ebird_TX_egoose, ebird_TX_egoose$cell == x)
   
   ## get yearly detection stats for hexagon
@@ -426,6 +420,8 @@ encounter_rate_calc <- function(x, checklist_threshold) {
   }
 }
 
+## Apply encounter rate function to eBird data
+
 TX_encounter_rates <- sapply(TX_cells, encounter_rate_calc, 
                              checklist_threshold = 50)
 
@@ -433,7 +429,8 @@ colnames(TX_encounter_rates) <- TX_cells
 
 TX_encounter_rates <- cbind(year, TX_encounter_rates)
 
-# pivot longer the dataframes for better plotting
+# pivot longer the dataframes for establishments, checklists and encounter rates
+# for better plotting
 
 TX_establishments <- as.data.frame(TX_establishments)
 
@@ -453,9 +450,13 @@ TX_encounter_rates <- pivot_longer(TX_encounter_rates, !year,
                                   names_to = "grid_cell",
                                   values_to = "encounter_rate")
 
+# Group together the three dataframes for a final "establishment_tracker" df
+
 establishment_tracker <- cbind(TX_establishments, 
                                TX_min_checklist_numbers$min_checklists,
                                TX_encounter_rates$encounter_rate)
+
+# Rename columns + make grid cell numeric
 
 colnames(establishment_tracker)[4] <- "min_checklists"
 
@@ -483,23 +484,20 @@ for (i in 1:nrow(establishment_tracker)) {
 write.csv(establishment_tracker, "data/TX_egoose_establishment_ct-50_met-0.005.csv", 
           row.names = FALSE)
 
-
-# read in csv file if previous step is already done
-# comment below line out if running for the 1st time
-# establishment_tracker <- read.csv("data/FL_egoose_establishment_ct-50_met-0.005.csv")
-
 ### Plotting invasive species establishment ----
 
-# dggridR stuff
+# Load in the establishment tracker df - this can be commented out if continuing
+# from previous point
+establishment_tracker <- read.csv("data/TX_egoose_establishment_ct-50_met-0.005.csv")
 
-# dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE, resround = 'nearest') <- Necessary if loaded in from establishment tracker
+# Create dggridR grid - this isn't necessary if running the whole script all in
+# one go
+
+dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE, resround = 'nearest')
 
 year <- c(2000:2019)
 
-establishment_tracker <- read.csv("data/TX_egoose_establishment_ct-50_met-0.005.csv")
-
-dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE, 
-                    resround = 'nearest')
+# Apply dggridR grid to establishment tracker df
 
 cellcenters <- dgSEQNUM_to_GEO(dggs,establishment_tracker$grid_cell)
 
@@ -507,18 +505,18 @@ cellcenters_df <- data.frame(cellcenters)
 
 establishment_tracker <- cbind(establishment_tracker, cellcenters_df)
 
-write.csv(establishment_tracker, "data/TX_ct-50_met-0.005_establishment-tracker.csv")
 TX_egoose_grid <- dgcellstogrid(dggs, establishment_tracker$grid_cell)
-
-write.csv(TX_egoose_grid, "data/TX_egoose_grid.csv")
 
 TX_egoose_grid <- sp::merge(TX_egoose_grid, establishment_tracker, by.x="seqnum", by.y="grid_cell")
 
-save(TX_egoose_grid, file = "data/TX_egoose_grid.Rdata")
+# Load in a map of the world and the US for plotting purposes
 
 countries <- map_data("world")
 
 USA <- map_data("state")
+
+# alter df so that any points close to international dateline don't look weird
+# when plotting
 
 wrapped_grid = st_wrap_dateline(TX_egoose_grid, options = c("WRAPDATELINE=YES","DATELINEOFFSET=180"), quiet = TRUE)
 
@@ -534,10 +532,12 @@ for (i in year) {
 
 }
 
-# Manually creating every graph (I couldn't work out a quicker way to do this)
+# Manually creating a plot of establishment for each year ----
 
-#### FOR GIF OF ESTABLISHMENT THROUGH THE YEARS, SEE 'greating gif map' 
+#### FOR CREATION OF GIF OF ESTABLISHMENT THROUGH THE YEARS, SEE 'spread animation creator' 
 # python file
+
+# Year 2000 plot - Ignore for analysis as we consider from 2002
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -555,6 +555,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2000.png", width = 10, height= 10)
 
+# Year 2001 plot - Ignore for analysis as we consider from 2002
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2001, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -570,6 +572,8 @@ ggplot() +
         subtitle = "2001")
 
 ggsave(filename = "plots_TX_egoose/2001.png", width = 10, height= 10)
+
+# Year 2002 plot
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -587,6 +591,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2002.png", width = 10, height= 10)
 
+# Year 2003 plot
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2003, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -602,6 +608,8 @@ ggplot() +
         subtitle = "2003")
 
 ggsave(filename = "plots_TX_egoose/2003.png", width = 10, height= 10)
+
+# Year 2004 plot
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -619,6 +627,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2004.png", width = 10, height= 10)
 
+# Year 2005 plot
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2005, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -634,6 +644,8 @@ ggplot() +
         subtitle = "2005")
 
 ggsave(filename = "plots_TX_egoose/2005.png", width = 10, height= 10)
+
+# Year 2006 plot
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -651,6 +663,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2006.png", width = 10, height= 10)
 
+# Year 2007 plot
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2007, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -666,6 +680,8 @@ ggplot() +
         subtitle = "2007")
 
 ggsave(filename = "plots_TX_egoose/2007.png", width = 10, height= 10)
+
+# Year 2008 plot
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -683,6 +699,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2008.png", width = 10, height= 10)
 
+# Year 2009 plot
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2009, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -698,6 +716,8 @@ ggplot() +
         subtitle = "2009")
 
 ggsave(filename = "plots_TX_egoose/2009.png", width = 10, height= 10)
+
+# Year 2010 plot
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -715,6 +735,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2010.png", width = 10, height= 10)
 
+# Year 2011 plot
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2011, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -730,6 +752,8 @@ ggplot() +
         subtitle = "2011")
 
 ggsave(filename = "plots_TX_egoose/2011.png", width = 10, height= 10)
+
+# Year 2012 plot
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -747,6 +771,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2012.png", width = 10, height= 10)
 
+# Year 2013 plot
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2013, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -762,6 +788,8 @@ ggplot() +
         subtitle = "2013")
 
 ggsave(filename = "plots_TX_egoose/2013.png", width = 10, height= 10)
+
+# Year 2014 plot
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -779,6 +807,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2014.png", width = 10, height= 10)
 
+# Year 2015 plot
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2015, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -794,6 +824,8 @@ ggplot() +
         subtitle = "2015")
 
 ggsave(filename = "plots_TX_egoose/2015.png", width = 10, height= 10)
+
+# Year 2016 plot
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -811,6 +843,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2016.png", width = 10, height= 10)
 
+# Year 2017 plot
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2017, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -827,6 +861,8 @@ ggplot() +
 
 ggsave(filename = "plots_TX_egoose/2017.png", width = 10, height= 10)
 
+# Year 2018 plot
+
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_2018, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -842,6 +878,8 @@ ggplot() +
         subtitle = "2018")
 
 ggsave(filename = "plots_TX_egoose/2018.png", width = 10, height= 10)
+
+# Year 2019 plot
 
 ggplot() +
   geom_polygon(data=USA, aes(x=long, y=lat, group=group), fill=NA, color="black") +

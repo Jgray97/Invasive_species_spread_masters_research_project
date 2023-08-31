@@ -1,8 +1,7 @@
-# Calculating land cover feature vectors for florida
-
+# CALCULATING LAND COVER RF PARAMETER VALUES FOR GRID CELLS ACROSS FLORIDA
 # Author = John Gray
-# Email = johnpatrickgray97@gmail.com
-# Last edit = 08/07/23
+# Email = greyjohn15@gmail.com
+# Last edit = 30/08/23
 
 # Load in packages + setwd() ----
 
@@ -12,7 +11,8 @@ library(ggplot2)
 library(tidyverse)
 setwd("D:/John_Gray_research_project/ebd_NZ_relMar-2023")
 
-# Load in first case raster
+# Load in first case raster (just a test to make sure everything's functioning
+# as it should)
 
 land_cover_2001 <- rast('land_cover_data/MCD12Q1.061_LC_Type2_doy2001001_aid0001.tif')
 
@@ -28,7 +28,7 @@ lc_2001_df$cell <- dgGEO_to_SEQNUM(dggs, lc_2001_df$x, lc_2001_df$y)$seqnum
 
 # filter to just area of interest
 
-establishment_tracker <- read.csv("data/FINAL-FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.005.csv")
+establishment_tracker <- read.csv("data/FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.005.csv")
 
 lc_2001_florida <- filter(lc_2001_df, lc_2001_df$cell %in% establishment_tracker$grid_cell)
 
@@ -41,15 +41,25 @@ colnames(lc_2001_florida) <- c("lon", "lat", "land_cover_type", "cell")
 ggplot() +
   geom_tile(data = lc_2001_florida, aes(x = lon, y = lat, fill = land_cover_type))
 
-# group classes and find average of each type for each cell
+# Reorient dataframe using pivot wider such that instead of listing the land
+# cover type for a particular raster entry, we have colums referring to groups
+# of land cover types and for each raster cell there is a value of 1 for the
+# column which the cell's land cover type belongs to and 0 for other values
 
+# 1st create new test dataframe and add in 'value' column for pivot wider purposes
 lc_florida_test <- lc_2001_florida[,1:4]
 lc_florida_test$value <- 1
 
+# then pivot wider to turn land cover types into column names and value column
+# generates '1' values wherever the land cover type matches the column
 lc_florida_wider <- lc_florida_test %>%
   pivot_wider(names_from = land_cover_type, values_from = value)
 
+# Put 0 in all columns which don't match land cover type
 lc_florida_wider[is.na(lc_florida_wider)]<-0
+
+# Rename columns according to land cover type + group specific columns into
+# broader categories
 
 lc_florida_wider$water <- lc_florida_wider$"0"
 
@@ -65,6 +75,8 @@ lc_florida_wider$urban <- lc_florida_wider$"13"
 
 lc_florida_wider$barren <- lc_florida_wider$"15"
 
+# Group individual raster points by grid cell and derive proportion covered by
+# each land cover type
 lc_cells <- lc_florida_wider %>%
   group_by(cell) %>%
   summarise(water_cover = mean(water), forest_cover = mean(forest), 
@@ -77,25 +89,37 @@ data_list <- list()
 
 for (i in 2001:2021) {
   
+  # create filename object to iteratively load in each year's rasters
   file_name <- paste0("land_cover_data/MCD12Q1.061_LC_Type2_doy", i, "001_aid0001.tif")
   
   lc <- rast(file_name)
   
+  # turn raster into dataframe
   lc_df <- as.data.frame(lc, xy = TRUE)
   
+  # ascribe grid cell values to each raster entry
   lc_df$cell <- dgGEO_to_SEQNUM(dggs, lc_df$x, lc_df$y)$seqnum
   
+  # filter down to just florida
   lc_florida <- filter(lc_df, lc_df$cell %in% establishment_tracker$grid_cell)
   
+  # change column names
   colnames(lc_florida) <- c("lon", "lat", "land_cover_type", "cell")
   
+  # add in value column and then pivot wider to create columns for each land
+  # land cover type with a 1 value in that column if raster point belongs to
+  # that land cover type
   lc_florida$value <- 1
   
   lc_florida_wider <- lc_florida %>%
     pivot_wider(names_from = land_cover_type, values_from = value)
   
+  # change na values to 0 for columns which don't correspond to the correct land
+  # cover type
   lc_florida_wider[is.na(lc_florida_wider)]<-0
   
+  # Create columns for grouped land cover types, if function accounts for the
+  # fact that a specific land cover type might not be present in the data
   lc_florida_wider$water <- if("0" %in% colnames(lc_florida_wider)) {
     lc_florida_wider$"0"
   } else {
@@ -171,6 +195,7 @@ for (i in 2001:2021) {
     0
   }
   
+  # use group_function to calculate proportion of land cover type coverage in each grid cell
   lc_cells <- lc_florida_wider %>%
     group_by(cell) %>%
     summarise(water_cover = mean(water), forest_cover = mean(forest), 
@@ -178,13 +203,14 @@ for (i in 2001:2021) {
               farming_cover = mean(farming), urban_cover = mean(urban), 
               barren_cover = mean(barren))
   
+  # Create column according to year of data
   lc_cells$year <- i
   
+  # fill datalist with each year's data
   data_list[[i-2000]] <- lc_cells
 }
 
-# RUN FROM HERE
-
+# Turn each entry in data list into its own object
 lc_cells_2001 <- data_list[[1]]
 lc_cells_2002 <- data_list[[2]]
 lc_cells_2003 <- data_list[[3]]
@@ -207,6 +233,7 @@ lc_cells_2019 <- data_list[[19]]
 lc_cells_2020 <- data_list[[20]]
 lc_cells_2021 <- data_list[[21]]
 
+# rowbind objects for each year to produce 1 big dataframe
 lc_cells <- rbind(lc_cells_2001, lc_cells_2002, 
                     lc_cells_2003, lc_cells_2004, lc_cells_2005,
                     lc_cells_2006, lc_cells_2007, lc_cells_2008,
@@ -216,6 +243,8 @@ lc_cells <- rbind(lc_cells_2001, lc_cells_2002,
                     lc_cells_2018, lc_cells_2019, lc_cells_2020,
                     lc_cells_2021)
 
+# Calculate average coverage of each land cover type for each cell across across
+# all years
 lc_cells_overall <- lc_cells %>%
   group_by(cell) %>%
   summarise(mean_water = mean(water_cover), mean_forest = mean(forest_cover), 
@@ -223,4 +252,6 @@ lc_cells_overall <- lc_cells %>%
             mean_wetland = mean(wetland_cover), mean_farming = mean(farming_cover),
             mean_urban = mean(urban_cover), mean_barren = mean(barren_cover))
 
+# save resultant land cover type coverage dataframe for each cell in florida
+# as a csv file
 write.csv(lc_cells_overall, "data/lc_feature_vectors.csv")

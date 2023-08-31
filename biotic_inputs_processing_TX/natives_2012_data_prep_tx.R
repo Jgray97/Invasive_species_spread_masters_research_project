@@ -1,19 +1,11 @@
-# IMPORTING AND PREPARING EBIRD DATA FOR ANALYSIS OF THE SPREAD OF ESTABLISHMENT
-# OF AN INVASIVE SPECIES
+# IMPORTING AND PREPARING EBIRD DATA FOR CALCULATION OF NATIVE SPECIES
+# ENCOUNTER RATE IN 2012 IN TEXAS
 # Author = John Gray
 # Email = greyjohn15@gmail.com
-# Last Edit = 10/05/2023
+# Last Edit = 31/08/2023
 
-# This is a neater version of 'Myna_NZ_spread_analysis' - if there are any errors
-# refer to original script
+### Loading necessary packages ----
 
-### Installing and loading necessary packages ----
-
-# install necessary packages
-install.packages("remotes")
-remotes::install_github("mstrimas/ebppackages")
-
-# load packages
 library(auk)
 library(sf)
 library(rnaturalearth)

@@ -1,14 +1,11 @@
-# PLOTTING SPREAD OF ESTABLISHMENT FOR FINAL REPORT 
-# IGNORE UP TO LINE 483 AND BEYOND 885
+# CALCULATING ESTABLISHMENT SCORE VALUES FOR THE EGYPTIAN GOOSE ACROSS FLORIDA
+# USING CHECKLIST THRESHOLD = 50 AND MINIMUM ENCOUNTER RATE THRESHOLD = 0.005
 # Author = John Gray
 # Email = greyjohn15@gmail.com
-# Last edit = 14/08/2023
+# Last edit = 29/08/2023
 
 
-# Installing and loading necessary packages ----
-install.packages("gganimate")
-install.packages("transformr")
-
+# Loading necessary packages ----
 library(rgbif)
 library(tidyr)
 library(ggplot2)
@@ -43,7 +40,7 @@ dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE,
 
 establishment_year_calc <- function(x, checklist_threshold, min_encounter_threshold) {
   
-  ## subset myna dataset to target hexagon
+  ## subset egoose dataset to target hexagon
   subject_cell <- subset(ebird_FL_egoose, ebird_FL_egoose$cell == x)
   
   ## get yearly detection stats for hexagon
@@ -225,11 +222,11 @@ year <- c(2000:2019)
 
 FL_establishments <- cbind(year, FL_establishments)
 
-# Create additional similar dataframe that finds number of checklists for each
+# Create additional similar function that finds number of checklists for each
 # year
 
 checklist_finder <- function(x, checklist_threshold){
-  ## subset myna dataset to target hexagon
+  ## subset egoose dataset to target hexagon
   subject_cell <- subset(ebird_FL_egoose, ebird_FL_egoose$cell == x)
   
   ## get yearly detection stats for hexagon
@@ -266,17 +263,18 @@ checklist_finder <- function(x, checklist_threshold){
   return(yearly_min_checklists)
 }
 
+# Apply checklist function to eBird data for Egyptian Goose
 FL_min_checklist_numbers <- sapply(FL_cells, checklist_finder, checklist_threshold = 50)
 
 colnames(FL_min_checklist_numbers) <- FL_cells
 
 FL_min_checklist_numbers <- cbind(year, FL_min_checklist_numbers)
 
-# create additional similar dataframe that finds encounter rate for each year
+# create additional similar function that finds encounter rate for each year
 
 encounter_rate_calc <- function(x, checklist_threshold) {
   
-  ## subset myna dataset to target hexagon
+  ## subset egoose dataset to target hexagon
   subject_cell <- subset(ebird_FL_egoose, ebird_FL_egoose$cell == x)
   
   ## get yearly detection stats for hexagon
@@ -422,6 +420,8 @@ encounter_rate_calc <- function(x, checklist_threshold) {
   }
 }
 
+## Apply encounter rate function to eBird data
+
 FL_encounter_rates <- sapply(FL_cells, encounter_rate_calc, 
                              checklist_threshold = 50)
 
@@ -429,7 +429,8 @@ colnames(FL_encounter_rates) <- FL_cells
 
 FL_encounter_rates <- cbind(year, FL_encounter_rates)
 
-# pivot longer the dataframes for better plotting
+# pivot longer the dataframes for establishments, checklists and encounter rates
+# for better plotting
 
 FL_establishments <- as.data.frame(FL_establishments)
 
@@ -449,9 +450,13 @@ FL_encounter_rates <- pivot_longer(FL_encounter_rates, !year,
                                   names_to = "grid_cell",
                                   values_to = "encounter_rate")
 
+# Group together the three dataframes for a final "establishment_tracker" df
+
 establishment_tracker <- cbind(FL_establishments, 
                                FL_min_checklist_numbers$min_checklists,
                                FL_encounter_rates$encounter_rate)
+
+# Rename columns + make grid cell numeric
 
 colnames(establishment_tracker)[4] <- "min_checklists"
 
@@ -479,48 +484,58 @@ for (i in 1:nrow(establishment_tracker)) {
 write.csv(establishment_tracker, "data/FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.005.csv", 
           row.names = FALSE)
 
-### Plotting Invasive species estabishment ----
+### Plotting Invasive species establishment ----
 
-establishment_tracker_fl <- read.csv("data/FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.005.csv")
+# Load in the establishment tracker df - this can be commented out if continuing
+# from previous point
+establishment_tracker <- read.csv("data/FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.005.csv")
 
-colnames(establishment_tracker)
-
-# dggridR stuff
+# Create dggridR grid - this isn't necessary if running the whole script all in
+# one go
 
 dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE, resround = 'nearest')
 
 year <- c(2000:2019)
 
-cellcenters_fl <- dgSEQNUM_to_GEO(dggs,establishment_tracker_fl$grid_cell)
+# Apply dggridR grid to establishment tracker df
 
-cellcenters_fl_df <- data.frame(cellcenters_fl)
+cellcenters <- dgSEQNUM_to_GEO(dggs,establishment_tracker$grid_cell)
 
-establishment_tracker_fl <- cbind(establishment_tracker_fl, cellcenters_fl_df)
+cellcenters_df <- data.frame(cellcenters)
 
-FL_egoose_grid <- dgcellstogrid(dggs, establishment_tracker_fl$grid_cell)
+establishment_tracker <- cbind(establishment_tracker, cellcenters_df)
 
-FL_egoose_grid <- sp::merge(FL_egoose_grid, establishment_tracker_fl, by.x="seqnum", by.y="grid_cell")
+FL_egoose_grid <- dgcellstogrid(dggs, establishment_tracker$grid_cell)
+
+FL_egoose_grid <- sp::merge(FL_egoose_grid, establishment_tracker, by.x="seqnum", by.y="grid_cell")
+
+# Load in a map of the world for plotting purposes
 
 countries <- map_data("world")
 
-wrapped_grid_fl = st_wrap_dateline(FL_egoose_grid, options = c("WRAPDATELINE=YES","DATELINEOFFSET=180"), quiet = TRUE)
+# alter df so that any points close to international dateline don't look weird
+# when plotting
+
+wrapped_grid = st_wrap_dateline(FL_egoose_grid, options = c("WRAPDATELINE=YES","DATELINEOFFSET=180"), quiet = TRUE)
 
 # subset grid dataframe by year to enabling plotting by year
 
 for (i in year) {
-  subsetted_egeese_fl <- FL_egoose_grid[FL_egoose_grid$year == i,]
-  wrapped_subsetted_egeese_fl <- st_wrap_dateline(subsetted_egeese_fl, options = c("WRAPDATELINE=YES","DATELINEOFFSET=180"), quiet = TRUE)
+  subsetted_egeese <- FL_egoose_grid[FL_egoose_grid$year == i,]
+  wrapped_subsetted_egeese <- st_wrap_dateline(subsetted_egeese, options = c("WRAPDATELINE=YES","DATELINEOFFSET=180"), quiet = TRUE)
   
   #store the subsetted dataframes as objects with years in names
-  assign(paste0("FL_egoose_grid_", i), subsetted_egeese_fl)
-  assign(paste0("wrapped_grid_fl", i), wrapped_subsetted_egeese_fl)
+  assign(paste0("FL_egoose_grid_", i), subsetted_egeese)
+  assign(paste0("wrapped_grid_fl", i), wrapped_subsetted_egeese)
 
 }
 
-# Manually creating every graph (I couldn't work out a quicker way to do this)
+# Manually creating a plot of establishment for each year ----
 
-#### FOR GIF OF ESTABLISHMENT THROUGH THE YEARS, SEE 'greating gif map' 
+#### FOR CREATION OF GIF OF ESTABLISHMENT THROUGH THE YEARS, SEE 'spread animation creator' 
 # python file
+
+# Year 2000 plot - ignore for analysis as we consider from 2002
 
 fl_2000 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -540,8 +555,9 @@ fl_2000 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
   
   
-
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2000.png", width = 7, height = 7)
+
+#Year 2001 plot - ignore for analysis as we consider from 2002
 
 fl_2001 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -562,6 +578,8 @@ fl_2001 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2001.png", width = 7, height = 7)
 
+# Year 2002 plot
+
 fl_2002 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2002, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -580,6 +598,8 @@ fl_2002 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2002.png", width = 7, height = 7)
+
+# Year 2003 plot
 
 fl_2003 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -600,6 +620,8 @@ fl_2003 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2003.png", width = 7, height = 7)
 
+# Year 2004 plot
+
 fl_2004 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2004, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -618,6 +640,8 @@ fl_2004 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2004.png", width = 7, height = 7)
+
+# Year 2005 plot
 
 fl_2005 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -638,6 +662,8 @@ fl_2005 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2005.png", width = 7, height = 7)
 
+# Year 2006 plot
+
 fl_2006 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2006, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -656,6 +682,8 @@ fl_2006 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2006.png", width = 7, height = 7)
+
+# Year 2007 plot
 
 fl_2007 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -676,6 +704,8 @@ fl_2007 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2007.png", width = 7, height = 7)
 
+# Year 2008 plot
+
 fl_2008 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2008, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -694,6 +724,8 @@ fl_2008 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2008.png", width = 7, height = 7)
+
+# Year 2009 plot
 
 fl_2009 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -714,6 +746,8 @@ fl_2009 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2009.png", width = 7, height = 7)
 
+# Year 2010 plot
+
 fl_2010 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2010, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -732,6 +766,8 @@ fl_2010 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2010.png", width = 7, height = 7)
+
+# Year 2011 plot
 
 fl_2011 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -752,6 +788,8 @@ fl_2011 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2011.png", width = 7, height = 7)
 
+# Year 2012 plot
+
 fl_2012 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2012, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -770,6 +808,8 @@ fl_2012 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2012.png", width = 7, height = 7)
+
+# Year 2013 plot
 
 fl_2013 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -790,6 +830,8 @@ fl_2013 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2013.png", width = 7, height = 7)
 
+# Year 2014 plot
+
 fl_2014 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2014, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -808,6 +850,8 @@ fl_2014 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2014.png", width = 7, height = 7)
+
+# Year 2015 plot
 
 fl_2015 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -828,6 +872,8 @@ fl_2015 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2015.png", width = 7, height = 7)
 
+# Year 2016 plot
+
 fl_2016 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2016, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -846,6 +892,8 @@ fl_2016 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2016.png", width = 7, height = 7)
+
+# Year 2017 plot
 
 fl_2017 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -866,6 +914,8 @@ fl_2017 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2017.png", width = 7, height = 7)
 
+# Year 2018 plot
+
 fl_2018 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2018, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -885,6 +935,8 @@ fl_2018 <- ggplot() +
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2018.png", width = 7, height = 7)
 
+# Year 2019 plot
+
 fl_2019 <- ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
   geom_sf(data = wrapped_grid_fl2019, aes(fill = enough_checklists), color=alpha("white", 0.4)) +
@@ -903,64 +955,3 @@ fl_2019 <- ggplot() +
         caption = "Checklist threshold (α) = 50 \n Minimum encounter threshold (ß) = 0.005")
 
 ggsave(filename = "final_establishment_plots/florida_ct-50_met-0.005/2019.png", width = 7, height = 7)
-
-### EXAMPLE PLOTS FOR COMPARING ESTABLISMENT, ENCOUNTER RATE, N_CHECKLISTS ----
-
-miami_example <- subset(establishment_tracker, grid_cell == 33454)
-
-miami_cell <- subset(ebird_FL_egoose, ebird_FL_egoose$cell == 33454)
-
-## get yearly detection stats for hexagon
-miami_cell_stats <- miami_cell %>%
-  group_by(year) %>%
-  summarise(n_checklists = n())
-
-miami_cell_stats <- filter(miami_cell_stats, year > 1999 & year < 2020)
-
-miami_example <- cbind(miami_example, miami_cell_stats$n_checklists)
-
-colnames(miami_example)[9] <- "n_checklists"
-
-miami_example_2 <- subset(establishment_tracker, grid_cell ==33453)
-
-miami_cell_2 <- subset(ebird_FL_egoose, ebird_FL_egoose$cell == 33453)
-
-## get yearly detection stats for hexagon
-miami_cell_stats_2 <- miami_cell_2 %>%
-  group_by(year) %>%
-  summarise(n_checklists = n())
-
-miami_cell_stats_2 <- filter(miami_cell_stats_2, year > 1999 & year < 2020)
-
-miami_example_2 <- cbind(miami_example_2, miami_cell_stats_2$n_checklists)
-
-colnames(miami_example_2)[9] <- "n_checklists"
-
-ggplot(data = miami_example_2, aes(x=year, y=n_checklists)) +
-  geom_line() +
-  scale_y_log10(breaks=c(seq(10,100, by = 10), seq(0,1000,by=100),seq(1000,11000, by=1000))) +
-  theme_bw() +
-  scale_x_continuous(breaks=seq(2000,2019,by=1)) +
-  theme(axis.text.x = element_text(angle=60, vjust=0.5)) +
-  geom_point() +
-  geom_hline(aes(yintercept=50)) +
-  annotate(geom = "text", x = 2013, y = 60, label = "Minimum Checklist Threshold = 50") +
-  labs(x = "year", y = "Number of Checklists (plotted on log10 scale)", 
-       title = "Number of eBird checklists per year for south Miami (grid cell =33453)") 
-
-ggsave(filename = "plots_fl_egoose_final/ct-50_met-0.005/33453_checklists_per_year.png", width = 10, height = 7)
-
-ggplot(data = miami_example_2, aes(x=year)) +
-  geom_line(aes(y = encounter_rate, colour = "encounter_rate")) +
-  geom_line(aes(y = establishment_score, colour = "establishment_score")) +
-  theme_bw() +
-  scale_x_continuous(breaks=seq(2000,2019,by=1)) +
-  theme(axis.text.x = element_text(angle=60, vjust=0.5)) +
-  geom_point(aes(y = encounter_rate, colour = "encounter_rate")) +
-  geom_point(aes(y = establishment_score, colour = "establishment_score")) +
-  geom_hline(aes(yintercept = 0.005)) +
-  annotate(geom = "text", x = 2011, y = 0.002, label = "Minimum encounter rate threshold = 0.005") +
-  labs(x = "year", y = "Establishment Score / Encounter Rate", 
-       title = "Egyptian goose encounter rate and establishment score per year for south Miami (grid cell =33453)") 
-
-ggsave(filename = "plots_fl_egoose_final/ct-50_met-0.005/33453_encounter_rate_establishment_score_per_year.png", width = 10, height = 7)

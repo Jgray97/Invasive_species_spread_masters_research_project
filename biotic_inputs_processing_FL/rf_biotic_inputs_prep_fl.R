@@ -1,14 +1,9 @@
-# GENERATING DATA FOR PREDICTION OF SPREAD BASED ON BIOTIC SIMILARITY
+# GENERATING FLORIDA BIOTIC INPUT VARIABLE VALUES FOR RF ALGORITHM
 # Author = John Gray
 # Email = greyjohn15@gmail.com
-# Last edit = 19/07/2023
+# Last edit = 31/08/2023
 
-
-
-
-# Installing and loading necessary packages ----
-install.packages("gganimate")
-install.packages("transformr")
+# Loading necessary packages ----
 
 library(rgbif)
 library(tidyr)
@@ -21,15 +16,9 @@ library(transformr)
 library(terra)
 library(tidyterra)
 
-# set wd ----
-setwd("D:/John_Gray_research_project/ebd_NZ_relMar-2023")
+## Import encounter rates dataframes ----
 
-## Start analysis from this point, ----
-## Actual version, will involve importing all the years data separately and running over night
-
-# import dataframes
-
-encounter_rates_00_04 <- read.csv("data/FL_encounter_rates_2000_2004.csv")
+encounter_rates_02_04 <- read.csv("data/FL_encounter_rates_2002_2004.csv")
 encounter_rates_05_08 <- read.csv("data/FL_encounter_rates_2005_2008.csv")
 encounter_rates_09_10 <- read.csv("data/FL_encounter_rates_2009_2010.csv")
 encounter_rates_11 <- read.csv("data/FL_encounter_rates_2011.csv")
@@ -40,38 +29,34 @@ encounter_rates_14b <- read.csv("data/FL_encounter_rates_2014b.csv")
 encounter_rates_15a <- read.csv("data/FL_encounter_rates_2015a.csv")
 encounter_rates_15b <- read.csv("data/FL_encounter_rates_2015b.csv")
 
-# rowbind them
+# Create an overall encounter rates df ----
 
-encounter_rates <- rbind(encounter_rates_00_04, encounter_rates_05_08, 
+# Rowbind all individual dataframes
+encounter_rates <- rbind(encounter_rates_02_04, encounter_rates_05_08, 
                          encounter_rates_09_10, encounter_rates_11, 
                          encounter_rates_12, encounter_rates_13,
                          encounter_rates_14a, encounter_rates_14b,
                          encounter_rates_15a, encounter_rates_15b)
 
+# get rid of 1st unnecessary column that arises from importing csvs
 encounter_rates <- encounter_rates[,-1]
 
-# add weighted encounter rate calc to encounter rates df
-# lol its the same as number of observations in cell 
-# I probably could have saved a lot of time
-
+# create a weighted encounter rate column to account for number of observations
+# associated with each encounter rate value
 encounter_rates$weighted_er <- encounter_rates$encounter_rate * encounter_rates$weight
 
-# calculate overall encounter rates
-
-# start with dummy variables/dataframe
-
+# Create a list of all unique species observed between 2002 and 2015
 species <- unique(encounter_rates$species)
 
+# create a list of all florida cells in 2002 - 2015 data
 cells <- unique(encounter_rates$cell)
 
-# create final encounter rates dummy dataframe
-
+# create overall encounter rates dataframe to be populated with values
 er_overall <- data.frame("species" = character(length = (length(species) * length(cells))), 
                               "cell" = numeric(length = (length(species) * length(cells))),
                               "encounter_rate" = numeric(length = (length(species) * length(cells))))
 
-# fill cells and species names for df
-
+# fill cells and species columns for df
 for (i in 1:length(species)) {
   er_overall$species[(length(cells)*(i-1)+1):(length(cells)*i)] <- species[i]
 }
@@ -80,8 +65,8 @@ for (i in 1:length(cells)) {
   er_overall$cell[c(length(cells)*(0:(length(species)-1))+i)] <- cells[i]
 }
 
-# calculate final encounter rate
-
+# calculate final encounter rate for each cell for each species using weighted
+# encounter rates from each time period subset
 for (i in 1:nrow(er_overall)) {
   subject_cell_bird <- filter(encounter_rates, ((species == er_overall$species[i]) & (cell == er_overall$cell[i])))
   
@@ -94,37 +79,32 @@ for (i in 1:nrow(er_overall)) {
   }
 }
 
-# get rid of all species whose detection rates are lower than 0.005
-
+# get rid of all species whose detection rates are lower than 0.005, i.e if a
+# species does not meet the β criterion it is not considered to be part of the
+# native species assemblage
 common_birds <- filter(er_overall, encounter_rate > 0.005)
 
-# save this table
+# save overall encounter rates dataframe in a csv file
+write.csv(common_birds, "data/common_bird_encounter_rates_2002_2015.csv")
 
-write.csv(common_birds, "data/common_bird_encounter_rates_2000_2015.csv")
-
-# get rid of invasive species
-
+# get rid of invasive species - these were determined manually using eBird 
+# website
 FL_invasive_species <- read.csv("data/invasive_species_list.csv")
-
 common_native_birds <- filter(common_birds, !(species %in% FL_invasive_species$species))
 
-write.csv(common_native_birds, "data/common_native_bird_encounter_rates_2000_2015.csv")
+# Save encounter rates for just native birds table
+write.csv(common_native_birds, "data/common_native_bird_encounter_rates_2002_2015.csv")
 
-# nice that's this done! time to do the analysis ----
+# BIOTIC INPUT PARAMETERS CALCULATION ----
 
-# comment below line out if needs be
-common_native_birds <- read.csv("data/common_native_bird_encounter_rates_2000_2015.csv")
+# comment below line out if continuing analysis from code above
+common_native_birds <- read.csv("data/common_native_bird_encounter_rates_2002_2015.csv")
 
-
-## Now move onto calculating average similarity score for each cell
-
+# Load in establishment tracker csv (as nearby encounter rates are used to 
+# calculate biotic input parameters)
 establishment_tracker <- read.csv("data/FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.005.csv")
 
-# 2 scores will be defined by sum of population size multiplied by shared 
-# species in inner ring
-# + the same for the outer ring
-
-# create dataframe
+# create biotic input parameter df
 
 rf_biotic_data <- filter(establishment_tracker, establishment_tracker$year > 2002)[,c(1,2,3,6)]
 
@@ -132,13 +112,21 @@ rf_biotic_data$bs_ring_1 <- 0
 
 rf_biotic_data$bs_ring_2 <- 0
 
-# Algorithm to define biotic similarity
+# THROUGH MANUAL INVESTIGATION I HAVE FOUND THAT:
 
-# 1st ring cell values for central cell = n: n+1, n-1, n+81, n+82, n-81, n-82
+# 1st/adjacent ring cell values given central cell ID = n: n+1, n-1, n+81, n+82,
+# n-81, n-82
 
-# 2nd ring cell values for central cell = n: n+2, n-2, n+80, n+83, n-83, n-80,
-# n-162, n-163, n-164, n+162, n+163, n+164
+# 2nd/1-cell-separated ring cell values for central cell ID = n: n+2, n-2, n+80, 
+# n+83, n-83, n-80, n-162, n-163, n-164, n+162, n+163, n+164
+
+# create list of grid cells in florida for for loop
 florida_cells <- unique(rf_biotic_data$grid_cell)
+
+### 1st ring biotic input variable is defined as the sum of establishment score
+### in the previous year, multiplied by the proportion of unique species in cell 
+### and target cell which are present in both cells for all cells adjacent to
+### the target cell
 
 for (i in 1:length(florida_cells)) {
   subject_cell <- filter(common_native_birds, cell == florida_cells[i])
@@ -208,7 +196,8 @@ for (i in 1:length(florida_cells)) {
       }
 }
 
-## repeat code for BS ring 2 ----
+## 2nd ring biotic input variable is the same except sum is over cells ----
+## which are 1 degree separated from the target cell ----
 
 for (i in 1:length(florida_cells)) {
   subject_cell <- filter(common_native_birds, cell == florida_cells[i])
@@ -341,6 +330,7 @@ for (i in 1:length(florida_cells)) {
 
 # don't need to worry about na's because they'll get factored out anyway
 
-write.csv(rf_biotic_data, "data/rf_biotic_data_v3.csv")
+# save rf biotic inputs for Florida to a csv file
+write.csv(rf_biotic_data, "data/rf_biotic_data.csv")
 
 

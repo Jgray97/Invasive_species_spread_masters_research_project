@@ -1,14 +1,11 @@
-# PRODUCING RESULTS ON THE SPREAD OF ESTABLISHMENT OF INVASIVE SPECIES FROM
-# CLEANED EBIRD DATA
+# CALCULATING ESTABLISHMENT SCORE VALUES FOR THE EGYPTIAN GOOSE ACROSS FLORIDA
+# USING CHECKLIST THRESHOLD = 50 AND MINIMUM ENCOUNTER RATE THRESHOLD = 0
 # Author = John Gray
 # Email = greyjohn15@gmail.com
-# Last edit = 24/05/2023
+# Last edit = 29/08/2023
 
 
-# Installing and loading necessary packages ----
-install.packages("gganimate")
-install.packages("transformr")
-
+# loading necessary packages ----
 library(rgbif)
 library(tidyr)
 library(ggplot2)
@@ -216,8 +213,8 @@ establishment_year_calc <- function(x, checklist_threshold, min_encounter_thresh
 FL_cells <- unique(ebird_FL_egoose$cell)
 
 FL_establishments <- sapply(FL_cells, establishment_year_calc,
-                            checklist_threshold = 100, 
-                            min_encounter_threshold = 0.005)
+                            checklist_threshold = 50, 
+                            min_encounter_threshold = 0)
 
 colnames(FL_establishments) <- FL_cells
 
@@ -225,11 +222,11 @@ year <- c(2000:2019)
 
 FL_establishments <- cbind(year, FL_establishments)
 
-# Create additional similar dataframe that finds number of checklists for each
+# Create additional similar function that finds number of checklists for each
 # year
 
 checklist_finder <- function(x, checklist_threshold){
-  ## subset myna dataset to target hexagon
+  ## subset egoose dataset to target hexagon
   subject_cell <- subset(ebird_FL_egoose, ebird_FL_egoose$cell == x)
   
   ## get yearly detection stats for hexagon
@@ -266,17 +263,18 @@ checklist_finder <- function(x, checklist_threshold){
   return(yearly_min_checklists)
 }
 
-FL_min_checklist_numbers <- sapply(FL_cells, checklist_finder, checklist_threshold = 100)
+# Apply checklist function to eBird data for Egyptian Goose
+FL_min_checklist_numbers <- sapply(FL_cells, checklist_finder, checklist_threshold = 50)
 
 colnames(FL_min_checklist_numbers) <- FL_cells
 
 FL_min_checklist_numbers <- cbind(year, FL_min_checklist_numbers)
 
-# create additional similar dataframe that finds encounter rate for each year
+# create additional similar function that finds encounter rate for each year
 
 encounter_rate_calc <- function(x, checklist_threshold) {
   
-  ## subset myna dataset to target hexagon
+  ## subset egoose dataset to target hexagon
   subject_cell <- subset(ebird_FL_egoose, ebird_FL_egoose$cell == x)
   
   ## get yearly detection stats for hexagon
@@ -422,14 +420,17 @@ encounter_rate_calc <- function(x, checklist_threshold) {
   }
 }
 
+## Apply encounter rate function to eBird data
+
 FL_encounter_rates <- sapply(FL_cells, encounter_rate_calc, 
-                             checklist_threshold = 100)
+                             checklist_threshold = 50)
 
 colnames(FL_encounter_rates) <- FL_cells
 
 FL_encounter_rates <- cbind(year, FL_encounter_rates)
 
-# pivot longer the dataframes for better plotting
+# pivot longer the dataframes for establishments, checklists and encounter rates
+# for better plotting
 
 FL_establishments <- as.data.frame(FL_establishments)
 
@@ -449,9 +450,13 @@ FL_encounter_rates <- pivot_longer(FL_encounter_rates, !year,
                                   names_to = "grid_cell",
                                   values_to = "encounter_rate")
 
+# Group together the three dataframes for a final "establishment_tracker" df
+
 establishment_tracker <- cbind(FL_establishments, 
                                FL_min_checklist_numbers$min_checklists,
                                FL_encounter_rates$encounter_rate)
+
+# Rename columns + make grid cell numeric
 
 colnames(establishment_tracker)[4] <- "min_checklists"
 
@@ -462,7 +467,7 @@ establishment_tracker$grid_cell <- as.numeric(establishment_tracker$grid_cell)
 # adding column to display if enough checklists are there for a given cell
 # MAKE SURE TO CHANGE IF STATEMENT CRITERION IF CHECKLIST CRITERION IS CHANGED
 
-checklist_threshold <- 100
+checklist_threshold <- 50
 
 establishment_tracker$enough_checklists <- numeric(nrow(establishment_tracker))
 
@@ -476,21 +481,23 @@ for (i in 1:nrow(establishment_tracker)) {
 
 # save dataframe as csv
 
-write.csv(establishment_tracker, "data/FINAL-VERSION-FL_egoose_establishment_ct-100_met-0.005.csv", 
+write.csv(establishment_tracker, "data/FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.csv", 
           row.names = FALSE)
 
+### Plotting Invasive species establishment ----
 
-# read in csv file if previous step is already done
-# comment below line out if running for the 1st time
-# establishment_tracker <- read.csv("data/FINAL-VERSION-FL_egoose_establishment_ct-100_met-0.005.csv")
+# Load in the establishment tracker df - this can be commented out if continuing
+# from previous point
+establishment_tracker <- read.csv("data/FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.csv")
 
-### Plotting invasive species establishment ----
+# Create dggridR grid - this isn't necessary if running the whole script all in
+# one go
 
-# dggridR stuff
+dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE, resround = 'nearest')
 
-# dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE, resround = 'nearest') <- Necessary if loaded in from establishment tracker
+year <- c(2000:2019)
 
-# year <- c(2000:2019) <- this is necessary if loaded in from establishment tracker
+# Apply dggridR grid to establishment tracker df
 
 cellcenters <- dgSEQNUM_to_GEO(dggs,establishment_tracker$grid_cell)
 
@@ -502,7 +509,12 @@ FL_egoose_grid <- dgcellstogrid(dggs, establishment_tracker$grid_cell)
 
 FL_egoose_grid <- sp::merge(FL_egoose_grid, establishment_tracker, by.x="seqnum", by.y="grid_cell")
 
+# Load in a map of the world for plotting purposes
+
 countries <- map_data("world")
+
+# alter df so that any points close to international dateline don't look weird
+# when plotting
 
 wrapped_grid = st_wrap_dateline(FL_egoose_grid, options = c("WRAPDATELINE=YES","DATELINEOFFSET=180"), quiet = TRUE)
 
@@ -518,10 +530,12 @@ for (i in year) {
 
 }
 
-# Manually creating every graph (I couldn't work out a quicker way to do this)
+# Manually creating a plot of establishment for each year
 
-#### FOR GIF OF ESTABLISHMENT THROUGH THE YEARS, SEE 'greating gif map' 
+#### FOR CREATION OF GIF OF ESTABLISHMENT THROUGH THE YEARS, SEE 'spread animation creator' 
 # python file
+
+# Year 2000 plot - ignore for analysis as we consider from 2002
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -534,10 +548,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2000")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2000.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2000.png", width = 10, height= 10)
+
+# Year 2001 plot - ignore for analysis as we consider from 2002
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -550,10 +566,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2001")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2001.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2001.png", width = 10, height= 10)
+
+# Year 2002 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -566,10 +584,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2002")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2002.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2002.png", width = 10, height= 10)
+
+# Year 2003 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -582,10 +602,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2003")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2003.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2003.png", width = 10, height= 10)
+
+# Year 2004 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -598,10 +620,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2004")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2004.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2004.png", width = 10, height= 10)
+
+# Year 2005 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -614,10 +638,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2005")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2005.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2005.png", width = 10, height= 10)
+
+# Year 2006 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -630,10 +656,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2006")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2006.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2006.png", width = 10, height= 10)
+
+# Year 2007 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -646,10 +674,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2007")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2007.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2007.png", width = 10, height= 10)
+
+# Year 2008 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -662,10 +692,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2008")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2008.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2008.png", width = 10, height= 10)
+
+# Year 2009 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -678,10 +710,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2009")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2009.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2009.png", width = 10, height= 10)
+
+# Year 2010 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -694,10 +728,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2010")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2010.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2010.png", width = 10, height= 10)
+
+# Year 2011 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -710,10 +746,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2011")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2011.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2011.png", width = 10, height= 10)
+
+# Year 2012 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -726,10 +764,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2012")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2012.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2012.png", width = 10, height= 10)
+
+# Year 2013 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -742,10 +782,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2013")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2013.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2013.png", width = 10, height= 10)
+
+# Year 2014 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -758,10 +800,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2014")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2014.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2014.png", width = 10, height= 10)
+
+# Year 2015 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -774,10 +818,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2015")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2015.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2015.png", width = 10, height= 10)
+
+# Year 2016 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -790,10 +836,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2016")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2016.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2016.png", width = 10, height= 10)
+
+# Year 2017 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -806,10 +854,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2017")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2017.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2017.png", width = 10, height= 10)
+
+# Year 2018 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -822,10 +872,12 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2018")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2018.png", width = 10, height= 10)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2018.png", width = 10, height= 10)
+
+# Year 2019 plot
 
 ggplot() +
   geom_polygon(data=countries, aes(x=long, y=lat, group=group), fill=NA, color="black") +
@@ -838,68 +890,7 @@ ggplot() +
   scale_fill_gradient(low=NA, high = alpha("Red",0.5)) +
   coord_sf(xlim=c(-88,-79), ylim = c(23,32)) + 
   labs( x = "Longitude", y = "Latitude", 
-        title = "Establishment spread of the Egyptian Goose in FL_ct-100_met-0.005",
+        title = "Establishment spread of the Egyptian Goose in FL_ct-50_met-0",
         subtitle = "2019")
 
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/2019.png", width = 10, height= 10)
-
-### EXAMPLE PLOTS FOR COMPARING ESTABLISMENT, ENCOUNTER RATE, N_CHECKLISTS ----
-
-miami_example <- subset(establishment_tracker, grid_cell == 33454)
-
-miami_cell <- subset(ebird_FL_egoose, ebird_FL_egoose$cell == 33454)
-
-## get yearly detection stats for hexagon
-miami_cell_stats <- miami_cell %>%
-  group_by(year) %>%
-  summarise(n_checklists = n())
-
-miami_cell_stats <- filter(miami_cell_stats, year > 1999 & year < 2020)
-
-miami_example <- cbind(miami_example, miami_cell_stats$n_checklists)
-
-colnames(miami_example)[9] <- "n_checklists"
-
-miami_example_2 <- subset(establishment_tracker, grid_cell ==33453)
-
-miami_cell_2 <- subset(ebird_FL_egoose, ebird_FL_egoose$cell == 33453)
-
-## get yearly detection stats for hexagon
-miami_cell_stats_2 <- miami_cell_2 %>%
-  group_by(year) %>%
-  summarise(n_checklists = n())
-
-miami_cell_stats_2 <- filter(miami_cell_stats_2, year > 1999 & year < 2020)
-
-miami_example_2 <- cbind(miami_example_2, miami_cell_stats_2$n_checklists)
-
-colnames(miami_example_2)[9] <- "n_checklists"
-
-ggplot(data = miami_example_2, aes(x=year, y=n_checklists)) +
-  geom_line() +
-  scale_y_log10(breaks=c(seq(10,100, by = 10), seq(0,1000,by=100),seq(1000,11000, by=1000))) +
-  theme_bw() +
-  scale_x_continuous(breaks=seq(2000,2019,by=1)) +
-  theme(axis.text.x = element_text(angle=60, vjust=0.5)) +
-  geom_point() +
-  geom_hline(aes(yintercept=100)) +
-  annotate(geom = "text", x = 2013, y = 60, label = "Minimum Checklist Threshold = 100") +
-  labs(x = "year", y = "Number of Checklists (plotted on log10 scale)", 
-       title = "Number of eBird checklists per year for south Miami (grid cell =33453)") 
-
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/33453_checklists_per_year.png", width = 10, height = 7)
-
-ggplot(data = miami_example_2, aes(x=year)) +
-  geom_line(aes(y = encounter_rate, colour = "encounter_rate")) +
-  geom_line(aes(y = establishment_score, colour = "establishment_score")) +
-  theme_bw() +
-  scale_x_continuous(breaks=seq(2000,2019,by=1)) +
-  theme(axis.text.x = element_text(angle=60, vjust=0.5)) +
-  geom_point(aes(y = encounter_rate, colour = "encounter_rate")) +
-  geom_point(aes(y = establishment_score, colour = "establishment_score")) +
-  geom_hline(aes(yintercept = 0.005)) +
-  annotate(geom = "text", x = 2011, y = 0.002, label = "Minimum encounter rate threshold = 0.005") +
-  labs(x = "year", y = "Establishment Score / Encounter Rate", 
-       title = "Egyptian goose encounter rate and establishment score per year for south Miami (grid cell =33453)") 
-
-ggsave(filename = "plots_fl_egoose_final/ct-100_met-0.005/33453_encounter_rate_establishment_score_per_year.png", width = 10, height = 7)
+ggsave(filename = "plots_fl_egoose_final/ct-50_met-0/2019.png", width = 10, height= 10)

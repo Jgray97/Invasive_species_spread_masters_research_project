@@ -1,19 +1,11 @@
 # IMPORTING AND PREPARING EBIRD DATA FOR ANALYSIS OF THE SPREAD OF ESTABLISHMENT
-# OF AN INVASIVE SPECIES
+# OF EGYPTIAN GOOSE IN FLORIDA
 # Author = John Gray
 # Email = greyjohn15@gmail.com
-# Last Edit = 10/05/2023
+# Last Edit = 29/08/2023
 
-# This is a neater version of 'Myna_NZ_spread_analysis' - if there are any errors
-# refer to original script
+### Loading necessary packages ----
 
-### Installing and loading necessary packages ----
-
-# install necessary packages
-install.packages("remotes")
-remotes::install_github("mstrimas/ebppackages")
-
-# load packages
 library(auk)
 library(sf)
 library(rnaturalearth)
@@ -29,12 +21,12 @@ select <- dplyr::select
 ### Setting up data directory ----
 
 # set ebd path (probably no need to overwrite if it says there's already a path)
-auk::auk_set_ebd_path("/Users/john/Desktop", overwrite = TRUE)
+auk::auk_set_ebd_path("D:/John_Gray_research_project/ebd_NZ_relMar-2023")
 
 # set up data directory
 dir.create("data", showWarnings = FALSE)
 
-ebd <- auk_ebd("ebd_US-TX_199901_202304_relJun-2023.txt",  # change to desired file
+ebd <- auk_ebd("ebd_US-FL_relApr-2023.txt",  # change to desired file
                file_sampling = "ebd_sampling_relApr-2023_new.txt") # change to desired file
 
 
@@ -42,8 +34,8 @@ ebd <- auk_ebd("ebd_US-TX_199901_202304_relJun-2023.txt",  # change to desired f
 
 # define features observations
 ebd_filters <- ebd %>%
-  auk_state("US-TX") %>%
-  auk_date(date = c("2000-01-01", "2005-12-31")) %>%
+  auk_species("Egyptian Goose") %>% # Change this to species you are looking at 
+  auk_state("US-FL") %>%
   auk_protocol(protocol = c("Stationary", "Traveling")) %>% # Standard eBird protocol for data analysis
   auk_complete()
 
@@ -56,8 +48,8 @@ data_dir <- "data"
 if (!dir.exists(data_dir)) {
   dir.create(data_dir)
 }
-f_ebd <- file.path(data_dir, "ebd_all_species_TX_2000-2005.txt")
-f_sampling <- file.path(data_dir, "ebd_checklists_all_species_TX_2000-2005.txt")
+f_ebd <- file.path(data_dir, "ebd_egoose_FL.txt")
+f_sampling <- file.path(data_dir, "ebd_checklists_egoose_FL.txt")
 
 # only run if the files don't already exist
 if (!file.exists(f_ebd)) {
@@ -103,7 +95,7 @@ ebd_zf_filtered <- ebd_zf %>%
     number_observers <= 10)
 
 # remove redundant variables
-ebird_TX_all_species <- ebd_zf_filtered %>% # adjust name according to target species and country
+ebird_FL_egoose <- ebd_zf_filtered %>% # adjust name according to target species and country
   select(checklist_id, observer_id, sampling_event_identifier,
          scientific_name,
          observation_count, species_observed, 
@@ -118,18 +110,15 @@ ebird_TX_all_species <- ebd_zf_filtered %>% # adjust name according to target sp
 
 dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE, resround = 'nearest')
 
-ebird_TX_all_species$cell <- dgGEO_to_SEQNUM(dggs, ebird_TX_all_species$longitude, ebird_TX_all_species$latitude)$seqnum
+ebird_FL_egoose$cell <- dgGEO_to_SEQNUM(dggs, ebird_FL_egoose$longitude, ebird_FL_egoose$latitude)$seqnum
 
-cell_stats <- ebird_TX_all_species %>%
+cell_stats <- ebird_FL_egoose %>%
   group_by(year, cell) %>%
   summarise(n_checklists = n(), mean_detection = mean(species_observed))
 
 ### Producing output csv files ----
 
-write_csv(ebird_TX_all_species, "data/ebd_TX_all_species_2000-2005_zf.csv", na = "")
+write_csv(ebird_FL_egoose, "data/ebd_FL_egoose_zf.csv", na = "")
 
-write_csv(cell_stats, "data/ebd_TX_all_species_2000-2005_cell_stats.csv", na = "")
+write_csv(cell_stats, "data/ebd_FL_egoose_cell_stats.csv", na = "")
 
-checker <- ebird_FL_all_species[,-c(1,2,3)]
-
-duplicate_rows_2 <- checker[duplicated(checker),]

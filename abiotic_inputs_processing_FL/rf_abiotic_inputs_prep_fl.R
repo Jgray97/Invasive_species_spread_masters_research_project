@@ -1,11 +1,11 @@
-## PREPARING DATA FOR ABIOTIC RANDOM FOREST INVASIVE SPECIES ESTABLISHMNET
-## ALGORITHM
+## PREPARING FLORIDA ABIOTIC INPUT VARIABLES FOR RF INVASIVE SPECIES 
+## ESTABLISHMENT ALGORITHM 
 
 # Author = John Gray
-# Email = johnpatrickgray97@gmail.com
-# Last edit = 10/07/23
+# Email = greyjohn15@gmail.com
+# Last edit = 30/08/23
 
-# Packages ----
+# Load in Packages ----
 
 library(dggridR)
 library(geosphere)
@@ -14,57 +14,43 @@ library(dplyr)
 
 # Loading in data ----
 
+# Establishment tracker data
 establishment_tracker <- read.csv("data/FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.005.csv")
 
+# Land cover type data
 lc_vectors <- read.csv("data/lc_feature_vectors.csv")
 
+# precipitation data
 prcp_vector <- read.csv("data/prcp_feature_vector.csv")
 
+# temperature data
 tmax_vector <- read.csv("data/tmax_feature_vector.csv")
 
 # Find centre-point of each cell and work out how far cells are apart ----
 
+# create hexagon grid
 dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE, 
                     resround = 'nearest')
 
+# determine cell centre points
 cellcenters <- dgSEQNUM_to_GEO(dggs,establishment_tracker$grid_cell)
 
+# turn cell centre points into df
 cellcenters_df <- as.data.frame(cellcenters)
 
+# add centre points to establishment tracker df
 establishment_tracker <- cbind(establishment_tracker, cellcenters_df)
 
-# calculate haversine distance for all cells from 33453 ----
+# AFTER SOME MANUAL INVESTIGATION I HAVE FOUND THAT 
 
-establishment_tracker$haversine <- 0
+# 1st/adjacent ring cell values for central cell = n: n+1, n-1, n+81, n+82, 
+# n-81, n-82
 
-for (i in 1:nrow(establishment_tracker)) {
-  establishment_tracker$haversine[i] <-distHaversine(c(establishment_tracker$lon_deg[i],
-                                                       establishment_tracker$lat_deg[i]),
-                                                     c(-80.58184,25.63718))
-}
+# 2nd/1-cell-separated ring cell values for central cell = n: n+2, n-2, n+80, 
+# n+83, n-83, n-80, n-162, n-163, n-164, n+162, n+163, n+164
 
-ggplot(establishment_tracker, aes(x=haversine)) + geom_histogram(bins = 50)
-
-
-establishment_tracker_2000 <- filter(establishment_tracker, 
-                                     establishment_tracker$year == 2000)
-
-# should have 6 which are about the same, then 12 which are about the same
-
-et_2000_arranged <- establishment_tracker_2000 %>%
-  arrange(haversine)
-
-ggplot(establishment_tracker, aes(x = lon_deg, y = lat_deg)) + 
-  geom_point() +
-  scale_y_continuous( breaks = seq(23, 32, by = 0.5)) +
-  scale_x_continuous( breaks = seq(-88, -79, by = 1))
-
-# 1st ring cell values for central cell = n: n+1, n-1, n+81, n+82, n-81, n-82
-
-# 2nd ring cell values for central cell = n: n+2, n-2, n+80, n+83, n-83, n-80,
-# n-162, n-163, n-164, n+162, n+163, n+164
-
-## Create new dataframe with feature vectors
+## Create new dataframe with establishment tracker + 1st ring abiotic rf ----
+## abiotic vectors ----
 
 rf_abiotic_data <- filter(establishment_tracker, establishment_tracker$year > 2002)[,c(1,2,3,6)]
 
@@ -88,7 +74,14 @@ rf_abiotic_data$barren_cover <- 0
 
 rf_abiotic_data$previous_establishment <- 0
 
-#1st ring tmax vector calc
+### For loop that calculates 1st ring temperature related rf input values
+# Value is defined by the sum of establishment score in previous years / 
+# exponent of difference in temperature compared with adjacent cell for every 
+# cell in 1st ring
+
+# We ignore cells where there aren't enough checklists and which don't belong to a
+# year in which there is any establishment and only calculate dissimilarity if
+# both target and adjacent cell are present in the rf_abiotic data dataframe
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$tmax_vector[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -154,7 +147,9 @@ for(i in 1:nrow(rf_abiotic_data)) {
   })
 }
 
-#1st ring precipitation vector calc
+### For loop that calculates 1st ring precipitation related rf input values
+# Defined same as for temperature but with precipitation instead
+# Same cleaning/checks/assumptions made
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$prcp_vector[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -220,7 +215,8 @@ for(i in 1:nrow(rf_abiotic_data)) {
   })
 }
 
-#1st ring water cover vector calc
+# Land cover input variables, starting with water cover are all calculated in 
+# the same way as temperature and precipitation, with the same assumptions/checks
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$water_cover[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -286,7 +282,7 @@ for(i in 1:nrow(rf_abiotic_data)) {
   })
 }
 
-#1st ring forest cover vector calc
+#1st ring forest cover input variable calc
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$forest_cover[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -352,7 +348,7 @@ for(i in 1:nrow(rf_abiotic_data)) {
   })
 }
 
-#1st ring grass cover vector calc
+#1st ring grass cover input variable calc
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$grass_cover[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -418,7 +414,7 @@ for(i in 1:nrow(rf_abiotic_data)) {
   })
 }
 
-#1st ring wetland cover vector calc
+#1st ring wetland cover input variable calc
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$wetland_cover[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -484,7 +480,7 @@ for(i in 1:nrow(rf_abiotic_data)) {
   })
 }
 
-#1st ring farming cover vector calc
+#1st ring farming cover input variable calc
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$farming_cover[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -550,7 +546,7 @@ for(i in 1:nrow(rf_abiotic_data)) {
   })
 }
 
-#1st ring urban cover vector calc
+#1st ring urban cover input variable calc
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$urban_cover[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -616,7 +612,7 @@ for(i in 1:nrow(rf_abiotic_data)) {
   })
 }
 
-#1st ring barren cover vector calc
+#1st ring barren cover input variable calc
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$barren_cover[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -682,9 +678,8 @@ for(i in 1:nrow(rf_abiotic_data)) {
   })
 }
 
-
-
-# previous establishment value
+# Add in an rf input variable for the establishment score in the target cell in
+# the previous year
 
 for (i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$previous_establishment[i] <- if (rf_abiotic_data$enough_checklists[i] == 1 &
@@ -698,10 +693,14 @@ for (i in 1:nrow(rf_abiotic_data)) {
 
 ## Start with 2nd ring ----
 
+# First off, rename columns for all 1st ring rf abiotic input variables
+
 colnames(rf_abiotic_data)[5:13] <- c("tmax_ring_1", "prcp_ring_1", "water_ring_1",
                                     "forest_ring_1", "grass_ring_1", 
                                     "wetland_ring_1", "farming_ring_1", 
                                     "urban_ring_1", "barren_ring_1")
+
+# now create new columns for 2nd ring abiotic input variables
 
 rf_abiotic_data$tmax_ring_2 <- 0
 
@@ -721,7 +720,9 @@ rf_abiotic_data$urban_ring_2 <- 0
 
 rf_abiotic_data$barren_ring_2 <- 0
 
-# create tmax_ring_2 variable
+# Starting with temperature related input, the 2nd ring input variables are 
+# calculated in exactly the same way, except that the cells included in the sum 
+# are those which are separated from the target cell by a single cell
 
 for(i in 1:nrow(rf_abiotic_data)) {
   rf_abiotic_data$tmax_ring_2[i] <- (if(rf_abiotic_data$enough_checklists[i] == 1 & 
@@ -1855,6 +1856,6 @@ for(i in 1:nrow(rf_abiotic_data)) {
   }) 
 }
 
-# now save data
+# save resultant abiotic rf input variable dataframe in a csv file
 
-write.csv(rf_abiotic_data, "data/11.08.23-rf_model_abiotic_data.csv")
+write.csv(rf_abiotic_data, "data/rf_model_abiotic_data.csv")

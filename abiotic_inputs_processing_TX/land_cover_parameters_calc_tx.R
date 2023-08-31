@@ -1,8 +1,7 @@
-# Calculating land cover feature vectors for texas
-
+# CALCULATING LAND COVER RF PARAMETER VALUES FOR GRID CELLS ACROSS TEXAS
 # Author = John Gray
-# Email = johnpatrickgray97@gmail.com
-# Last edit = 08/07/23
+# Email = greyjohn15@gmail.com
+# Last edit = 30/08/23
 
 # Load in packages + setwd() ----
 
@@ -12,7 +11,8 @@ library(ggplot2)
 library(tidyverse)
 setwd("D:/John_Gray_research_project/ebd_NZ_relMar-2023")
 
-# Load in first case raster
+# Load in first case raster (just a test to make sure everything's functioning
+# as it should)
 
 land_cover_2001 <- rast('land_cover_data_texas/MCD12Q1.061_LC_Type2_doy2001001_aid0001.tif')
 
@@ -41,31 +41,47 @@ colnames(lc_2001_texas) <- c("lon", "lat", "land_cover_type", "cell")
 ggplot() +
   geom_tile(data = lc_2001_texas, aes(x = lon, y = lat, fill = land_cover_type))
 
-# repeat process for all of years
+# Now calculate average land cover proportion for each cell type in texas in
+# each year
+
+# set up a list for each years texas cell land cover dataframes to populate
 
 data_list <- list()
 
 for (i in 2001:2021) {
   
+  # create filename object to iteratively load in each year's rasters
   file_name <- paste0("land_cover_data/MCD12Q1.061_LC_Type2_doy", i, "001_aid0001.tif")
   
+  # load in raster object for the land cover type data
   lc <- rast(file_name)
   
+  # turn raster into a dataframe so that cell values can be assigned
   lc_df <- as.data.frame(lc, xy = TRUE)
   
+  # assign grid cell value to each entry in dataframe
   lc_df$cell <- dgGEO_to_SEQNUM(dggs, lc_df$x, lc_df$y)$seqnum
   
+  # filter dataframe to just include entries in Texas
   lc_texas <- filter(lc_df, lc_df$cell %in% establishment_tracker$grid_cell)
   
+  # rename dataframe column titles
   colnames(lc_texas) <- c("lon", "lat", "land_cover_type", "cell")
   
+  # add in value column and then pivot wider to create columns for each land
+  # land cover type with a 1 value in that column if raster point belongs to
+  # that land cover type
   lc_texas$value <- 1
   
   lc_texas_wider <- lc_texas %>%
     pivot_wider(names_from = land_cover_type, values_from = value)
   
+  # change na values to 0 for columns which don't correspond to the correct land
+  # cover type
   lc_texas_wider[is.na(lc_texas_wider)]<-0
   
+  # Create columns for grouped land cover types, if function accounts for the
+  # fact that a specific land cover type might not be present in the data
   lc_texas_wider$water <- if("0" %in% colnames(lc_texas_wider)) {
     lc_texas_wider$"0"
   } else {
@@ -141,6 +157,7 @@ for (i in 2001:2021) {
     0
   }
   
+  # use group_function to calculate proportion of land cover type coverage in each grid cell
   lc_cells <- lc_texas_wider %>%
     group_by(cell) %>%
     summarise(water_cover = mean(water), forest_cover = mean(forest), 
@@ -148,13 +165,14 @@ for (i in 2001:2021) {
               farming_cover = mean(farming), urban_cover = mean(urban), 
               barren_cover = mean(barren))
   
+  # Create column according to year of data
   lc_cells$year <- i
   
+  # fill datalist with each year's data
   data_list[[i-2000]] <- lc_cells
 }
 
-# RUN FROM HERE
-
+# Turn each entry in data list into its own individual dataframe object
 lc_cells_2001 <- data_list[[1]]
 lc_cells_2002 <- data_list[[2]]
 lc_cells_2003 <- data_list[[3]]
@@ -177,6 +195,7 @@ lc_cells_2019 <- data_list[[19]]
 lc_cells_2020 <- data_list[[20]]
 lc_cells_2021 <- data_list[[21]]
 
+# rowbind objects for each year to produce 1 big dataframe
 lc_cells <- rbind(lc_cells_2001, lc_cells_2002, 
                     lc_cells_2003, lc_cells_2004, lc_cells_2005,
                     lc_cells_2006, lc_cells_2007, lc_cells_2008,
@@ -186,6 +205,8 @@ lc_cells <- rbind(lc_cells_2001, lc_cells_2002,
                     lc_cells_2018, lc_cells_2019, lc_cells_2020,
                     lc_cells_2021)
 
+# Calculate average coverage of each land cover type for each cell across across
+# all years
 lc_cells_overall <- lc_cells %>%
   group_by(cell) %>%
   summarise(mean_water = mean(water_cover), mean_forest = mean(forest_cover), 
@@ -193,4 +214,6 @@ lc_cells_overall <- lc_cells %>%
             mean_wetland = mean(wetland_cover), mean_farming = mean(farming_cover),
             mean_urban = mean(urban_cover), mean_barren = mean(barren_cover))
 
+# save resultant land cover type coverage dataframe for each cell in Texas
+# as a csv file
 write.csv(lc_cells_overall, "data/lc_feature_vectors.csv")

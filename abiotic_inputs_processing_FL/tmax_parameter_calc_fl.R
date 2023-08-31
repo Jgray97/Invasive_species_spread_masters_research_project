@@ -1,5 +1,4 @@
-### CALCULATING TMAX FOR ALL GRID CELLS
-
+# CALCULATING TEMPERATURE RF PARAMETER VALUES FOR GRID CELLS ACROSS FLORIDA
 # Author = John Gray
 # Email = johnpatrickgray97@gmail.com
 # Last edit = 08/07/23
@@ -12,116 +11,85 @@ library(ggplot2)
 
 setwd("D:/John_Gray_research_project/ebd_NZ_relMar-2023")
 
-
-# Load in grid and temp data
+# Create hexagon grid
 
 dggs <- dgconstruct(res = 8, projection = "ISEA", metric = TRUE, resround = 'nearest')
 
+# Load in temperature raster for the year 2000
+
 tmax_2000 <- rast('tmax/daymet_v4_tmax_annavg_na_2000.tif')
 
-# sort out temp data coord reference system
-
+# Load in another spatial object which I know is in the right coordinate 
+# reference system and project temperature raster onto its projection
 monk_map <- terra::vect("Monk_Parakeet")
 
 tmax_2000 <- project(tmax_2000, crs(monk_map))
 
-# assign grid cell to each point
-
+# turn temperature raster object into a dataframe to allow assignment of grid 
+# cell values
 tmax_2000_df <- as.data.frame(tmax_2000, xy = TRUE)
 
+# Assign a grid cell value to each entry in dataframe
 tmax_2000_df$cell <- dgGEO_to_SEQNUM(dggs, tmax_2000_df$x, tmax_2000_df$y)$seqnum
 
-# filter temp dataframe to just florida cells
+# Load in establishment tracker to provide list of Florida grid cells
+establishment_tracker <- read.csv("data/FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.005.csv")
 
-establishment_tracker <- read.csv("data/FINAL-FINAL-VERSION-FL_egoose_establishment_ct-50_met-0.005.csv")
-
+# Filter temp dataframe to just include Florida cells
 tmax_2000_florida <- filter(tmax_2000_df, tmax_2000_df$cell %in% establishment_tracker$grid_cell)
 
 # change col names
-
 colnames(tmax_2000_florida) <- c("lon", "lat", "tmax", "cell")
 
-# check that it looks ok
-
-ggplot() +
-  geom_tile(data = tmax_2000_florida, aes(x = lon, y = lat, fill = tmax)) +
-  xlim(-88,-79) + 
-  ylim(23,32) +
-  scale_fill_gradient(limits = c(20, 31), low = alpha("Blue"), 
-                      high = alpha("Red"))
-
-# investigate what's happening for 0 values
-
-min(tmax_2000_florida$tmax)
-
-nrow(filter(tmax_2000_florida, is.na(tmax_2000_florida$tmax)))
-
-summary(tmax_2000_florida$tmax)
-
-# calculate cell values
-
+# calculate average temperature value for each cell in Florida
 tmax_cells_2000 <- tmax_2000_florida %>%
   group_by(cell) %>%
   summarise(mean_tmax = mean(tmax))
 
+# Create a new column in the dataframe which lists the appropriate year for the
+# entry
 tmax_cells_2000$year <- 2000
 
-# load in rasters for all years
-
-tmax_2001 <- rast('tmax/daymet_v4_tmax_annavg_na_2001.tif')
-tmax_2002 <- rast('tmax/daymet_v4_tmax_annavg_na_2002.tif')
-tmax_2003 <- rast('tmax/daymet_v4_tmax_annavg_na_2003.tif')
-tmax_2004 <- rast('tmax/daymet_v4_tmax_annavg_na_2004.tif')
-tmax_2005 <- rast('tmax/daymet_v4_tmax_annavg_na_2005.tif')
-tmax_2006 <- rast('tmax/daymet_v4_tmax_annavg_na_2006.tif')
-tmax_2007 <- rast('tmax/daymet_v4_tmax_annavg_na_2007.tif')
-tmax_2008 <- rast('tmax/daymet_v4_tmax_annavg_na_2008.tif')
-tmax_2009 <- rast('tmax/daymet_v4_tmax_annavg_na_2009.tif')
-tmax_2010 <- rast('tmax/daymet_v4_tmax_annavg_na_2010.tif')
-tmax_2011 <- rast('tmax/daymet_v4_tmax_annavg_na_2011.tif')
-tmax_2012 <- rast('tmax/daymet_v4_tmax_annavg_na_2012.tif')
-tmax_2013 <- rast('tmax/daymet_v4_tmax_annavg_na_2013.tif')
-tmax_2014 <- rast('tmax/daymet_v4_tmax_annavg_na_2014.tif')
-tmax_2015 <- rast('tmax/daymet_v4_tmax_annavg_na_2015.tif')
-tmax_2016 <- rast('tmax/daymet_v4_tmax_annavg_na_2016.tif')
-tmax_2017 <- rast('tmax/daymet_v4_tmax_annavg_na_2017.tif')
-tmax_2018 <- rast('tmax/daymet_v4_tmax_annavg_na_2018.tif')
-tmax_2019 <- rast('tmax/daymet_v4_tmax_annavg_na_2019.tif')
-tmax_2020 <- rast('tmax/daymet_v4_tmax_annavg_na_2020.tif')
-tmax_2021 <- rast('tmax/daymet_v4_tmax_annavg_na_2021.tif')
-tmax_2022 <- rast('tmax/daymet_v4_tmax_annavg_na_2022.tif')
-
+# create empty datalist to be filled with each year's dataframe
 data_list <- list()
 
-# create for loop to calculate tmax_cells for each year
-
+# For loop populates list with cell-grouped temperature dataframes for each year
 for (i in 2001:2022) {
   
+  # create object referring to downloaded tmax data for each year depending on i
   file_name <- paste0("tmax/daymet_v4_tmax_annavg_na_", i, ".tif")
   
+  #Generate raster object for temperature levels across North America
   tmax <- rast(file_name)
   
+  # Project raster object onto the right coordinate reference system
   tmax_proj <- project(tmax, crs(monk_map))
   
+  # turn raster object into a dataframe so that grid cell values can be assigned
   tmax_df <- as.data.frame(tmax_proj, xy = TRUE)
   
+  # Assign grid cell to each point in dataframe
   tmax_df$cell <- dgGEO_to_SEQNUM(dggs, tmax_df$x, tmax_df$y)$seqnum
   
+  # Filter to just include entries belonging to cells in Florida
   tmax_florida <- filter(tmax_df, tmax_df$cell %in% establishment_tracker$grid_cell)
   
+  # Update column names
   colnames(tmax_florida) <- c("lon", "lat", "tmax", "cell")
   
+  # Calculate average values for each Florida cell and store in a dataframe
   tmax_cells <- tmax_florida %>%
     group_by(cell) %>%
     summarise(mean_tmax = mean(tmax))
   
+  # add column which tells you the year for a particular entry
   tmax_cells$year <- i
   
+  # Add the resultant dataframe to the overarching datalist
   data_list[[i-2000]] <- tmax_cells 
 }
 
 # rename datalist items to individual dataframes
-
 tmax_cells_2001 <- data_list[[1]]
 tmax_cells_2002 <- data_list[[2]]
 tmax_cells_2003 <- data_list[[3]]
@@ -145,6 +113,7 @@ tmax_cells_2020 <- data_list[[20]]
 tmax_cells_2021 <- data_list[[21]]
 tmax_cells_2022 <- data_list[[22]]
 
+# create one big dataframe from all the individual yearly dataframes
 tmax_cells <- rbind(tmax_cells_2000, tmax_cells_2001, tmax_cells_2002, 
                     tmax_cells_2003, tmax_cells_2004, tmax_cells_2005,
                     tmax_cells_2006, tmax_cells_2007, tmax_cells_2008,
@@ -154,8 +123,11 @@ tmax_cells <- rbind(tmax_cells_2000, tmax_cells_2001, tmax_cells_2002,
                     tmax_cells_2018, tmax_cells_2019, tmax_cells_2020,
                     tmax_cells_2021, tmax_cells_2022)
 
+# create final dataframe where temperature in each cell corresponds to average 
+# value for that cell from year 2000 to 2022
 tmax_cells_overall <- tmax_cells %>%
   group_by(cell) %>%
   summarise(mean_tmax = mean(mean_tmax))
 
+# save resultant dataframe in csv file
 write.csv(tmax_cells_overall, "data/tmax_feature_vector.csv")
