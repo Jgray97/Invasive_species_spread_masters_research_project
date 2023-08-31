@@ -1,6 +1,6 @@
 # Invasive_species_spread_masters_research_project
 ## Author: John Gray
-## Email: johnpatrick gray97@btinternet.com
+## Email: johnpatrickgray97@btinternet.com
 
 ### Summary:
 The R scripts contained within this repository are the final versions of those which have been used to conduct analysis for my UCL Ecology & Data Science masters research project, entitled: 'Spread prediction unlocked: how citizen science and machine learning can advance
